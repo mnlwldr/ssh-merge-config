@@ -1,4 +1,4 @@
-# whats-this
+# What's this?
 Little tool written in Go to merge several individual ssh configuration files to a single configuration. 
 Bash equivalent: 
 ```sh
