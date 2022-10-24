@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -11,68 +12,89 @@ import (
 
 func main() {
 
-	name := os.Args[0]
-
-	if len(os.Args) < 3 {
-		help(name)
-		os.Exit(255)
+	homedir, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
 	}
 
-	directory := os.Args[1]
-	output := os.Args[2]
+	DefaultInput := fmt.Sprintf("%s/%s", homedir, ".ssh/config.d")
+	DefaultOutput := fmt.Sprintf("%s/%s", homedir, ".ssh/config")
+
+	in := flag.String("i", DefaultInput, "input directory")
+	out := flag.String("o", DefaultOutput, "output file")
+	verbose := flag.Bool("v", false, "verbose")
+
+	flag.Parse()
+
+	directory := *in
+	output := *out
 
 	if _, err := os.Stat(directory); os.IsNotExist(err) {
-		log.Printf("%s does not exist", directory)
-		os.Exit(255)
+		log.Fatalf("%s does not exist.", directory)
 	}
 
+	if *verbose {
+		fmt.Printf("Read files from %s\n", *in)
+	}
 	files, err := ioutil.ReadDir(directory)
-	checkErr(err)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	var content bytes.Buffer
+
 	for _, f := range files {
-		readFile,err := ioutil.ReadFile(directory + string(os.PathSeparator) + f.Name())
-		checkErr(err)
+		readFile, err := ioutil.ReadFile(directory + string(os.PathSeparator) + f.Name())
+
+		if *verbose {
+			log.Printf("Read file %s", f.Name())
+		}
+
+		if err != nil {
+			log.Fatal(err)
+		}
+
 		content.WriteString(string(readFile))
 	}
 
 	if _, err := os.Stat(output); err == nil {
-		backup(output)
+		if err := backup(output); err != nil {
+			log.Fatal(err)
+		}
 	}
 
-	out, err := os.Create(output)
-	checkErr(err)
-	defer func(out *os.File) {
-		err := out.Close()
-		checkErr(err)
-	}(out)
-
-	_, err2 := out.WriteString(content.String())
-	checkErr(err2)
-
-	fmt.Println("done")
-}
-
-func checkErr(err error) {
+	outputFile, err := os.Create(output)
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	defer func(outputFile *os.File) {
+		err := outputFile.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+	}(outputFile)
+
+	_, err2 := outputFile.WriteString(content.String())
+	if err2 != nil {
+		log.Fatal(err2)
+	}
+
+	if *verbose {
+		fmt.Println("done")
+	}
 }
 
-func help(name string) {
-	fmt.Printf("Usage: %s [input directory] [output file]\n", name)
-	fmt.Println("Example: ")
-	fmt.Printf("\t %s ~/.ssh/config.d/ ~/.ssh/config\n", name)
-}
-
-func backup(filename string) {
+func backup(filename string) error {
 	var backupFile bytes.Buffer
+
 	backupFile.WriteString(filename)
 	backupFile.WriteString(".")
 	backupFile.WriteString(time.Now().Format("20060102"))
 
 	err := os.Rename(filename, backupFile.String())
 	if err != nil {
-		checkErr(err)
+		return err
 	}
+	return nil
 }
